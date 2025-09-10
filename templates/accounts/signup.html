@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Sign up — Barcode Labeler{% endblock %}
+{% block content %}
+<div class="max-w-md mx-auto bg-white p-6 border rounded-xl">
+  <h1 class="text-lg font-semibold mb-4">Create account</h1>
+
+  <form method="post" class="space-y-3">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="px-3 py-2 rounded bg-red-50 border border-red-200 text-red-800 text-sm">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    <label class="block text-sm">Email</label>
+    {{ form.email }}
+    {% for err in form.email.errors %}
+      <div class="text-sm text-red-700">{{ err }}</div>
+    {% endfor %}
+
+    <label class="block text-sm">Password</label>
+    <input name="password1" type="password" required class="w-full border rounded px-3 py-2">
+    {% for err in form.password1.errors %}
+      <div class="text-sm text-red-700">{{ err }}</div>
+    {% endfor %}
+
+    <label class="block text-sm">Confirm Password</label>
+    <input name="password2" type="password" required class="w-full border rounded px-3 py-2">
+    {% for err in form.password2.errors %}
+      <div class="text-sm text-red-700">{{ err }}</div>
+    {% endfor %}
+
+    <button class="w-full h-10 rounded bg-slate-900 text-white mt-2">Sign up</button>
+  </form>
+
+  <p class="text-xs text-slate-500 mt-3">
+    Already have an account? <a class="underline" href="{% url 'login' %}">Login</a>
+  </p>
+</div>
+{% endblock %}

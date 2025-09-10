@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Payments — Barcode Labeler{% endblock %}
+{% block content %}
+<div class="bg-white p-6 border rounded-xl">
+  <div class="flex items-center justify-between mb-3">
+    <h1 class="text-lg font-semibold">Payments</h1>
+    <a href="/accounts/buy-credits/" class="underline">Buy more credits</a>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead class="bg-slate-100 text-slate-700">
+        <tr>
+          <th class="p-3 text-left">Date</th>
+          <th class="p-3 text-left">Order ID</th>
+          <th class="p-3 text-left">Payment ID</th>
+          <th class="p-3 text-left">Credits</th>
+          <th class="p-3 text-left">Amount</th>
+          <th class="p-3 text-left">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in payments %}
+          <tr class="border-b last:border-0">
+            <td class="p-3">{{ p.created_at|date:"Y-m-d H:i" }}</td>
+            <td class="p-3 font-mono text-xs">{{ p.razorpay_order_id }}</td>
+            <td class="p-3 font-mono text-xs">{{ p.razorpay_payment_id|default:"—" }}</td>
+            <td class="p-3">{{ p.credits }}</td>
+            <td class="p-3">₹{{ p.amount_rupees }}</td>
+            <td class="p-3">
+              {% if p.status == "paid" %}
+                <span class="px-2 py-1 text-xs rounded bg-green-100 border border-green-200 text-green-800">Paid</span>
+              {% elif p.status == "failed" %}
+                <span class="px-2 py-1 text-xs rounded bg-red-100 border border-red-200 text-red-800">Failed</span>
+              {% else %}
+                <span class="px-2 py-1 text-xs rounded bg-slate-100 border border-slate-200 text-slate-800">Created</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td class="p-3 text-slate-500" colspan="6">No payments yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

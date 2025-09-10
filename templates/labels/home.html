@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+{% block title %}Label Maker — Barcode Labeler{% endblock %}
+
+{% block content %}
+<!-- JsBarcode (only needed on this page) -->
+<script src="https://unpkg.com/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+
+<style>
+  :root { --label-w: 50mm; --label-h: 30mm; }
+  .label-card { width: var(--label-w); height: var(--label-h); }
+  .label-card svg { width: 100%; height: 20mm; }
+  @media print {
+    @page { margin: 8mm; }
+    body * { visibility: hidden; }
+    #printArea, #printArea * { visibility: visible; }
+    #printArea { position: fixed; inset: 0; padding: 0; }
+    .no-print { display: none !important; }
+  }
+</style>
+
+<div class="bg-white p-6 border rounded-2xl">
+  <div class="flex items-center justify-between mb-2">
+    <h1 class="text-lg font-semibold">Fashion & Apparel Label Maker</h1>
+    <div class="text-xs text-slate-500">Logged in as <span class="font-mono">{{ request.user.email }}</span></div>
+  </div>
+
+  <!-- Create Panel -->
+  <section class="no-print rounded-xl border border-slate-200 p-4">
+    <h2 class="text-base font-semibold mb-3">Create labels</h2>
+
+    <!-- We include a hidden form only to get a CSRf token easily -->
+    <form id="csrfForm" class="hidden" method="post">{% csrf_token %}</form>
+
+    <form id="createForm" class="grid grid-cols-1 md:grid-cols-5 gap-3">
+      <div>
+        <label class="block text-sm font-medium mb-1">SKU Name</label>
+        <input id="skuName" name="name" class="w-full rounded-lg border-slate-300 focus:border-slate-500 focus:ring-slate-500" placeholder="eg. RC-CHIK-ANKITA" required />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Units</label>
+        <input id="units" name="units" type="number" min="1" value="10" class="w-full rounded-lg border-slate-300 focus:border-slate-500 focus:ring-slate-500" required />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">SKU Type</label>
+        <input id="skuType" name="type" class="w-full rounded-lg border-slate-300 focus:border-slate-500 focus:ring-slate-500" placeholder="eg. Dress / Kurta / Tee" required />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">SKU Category</label>
+        <input id="skuCategory" name="category" class="w-full rounded-lg border-slate-300 focus:border-slate-500 focus:ring-slate-500" placeholder="eg. Women / Men / Kids" required />
+      </div>
+      <div class="flex items-end gap-2">
+        <button type="submit" class="w-full h-10 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800 transition">Generate</button>
+      </div>
+    </form>
+    <p class="text-xs text-slate-500 mt-2">
+      Code format: <span class="font-mono">&lt;userId8&gt;-name-type-category-###</span>.
+      Example: <span class="font-mono">9a44d71b-riwaaz-dress-womens-001</span>
+    </p>
+  </section>
+
+  <!-- Filters & Actions -->
+  <section class="no-print rounded-xl border border-slate-200 p-4 mt-4">
+    <div class="flex flex-col md:flex-row md:items-end gap-3 justify-between">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3 flex-1">
+        <div>
+          <label class="block text-sm font-medium mb-1">Filter by Name</label>
+          <input id="filterName" class="w-full rounded-lg border-slate-300 focus:border-slate-500 focus:ring-slate-500" placeholder="contains…" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Filter by Type</label>
+          <input id="filterType" class="w-full rounded-lg border-slate-300 focus:border-slate-500 focus:ring-slate-500" placeholder="exact/contains…" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Filter by Category</label>
+          <input id="filterCategory" class="w-full rounded-lg border-slate-300 focus:border-slate-500 focus:ring-slate-500" placeholder="exact/contains…" />
+        </div>
+        <div class="flex items-end gap-2">
+          <button id="applyFilters" class="h-10 w-full rounded-xl border border-slate-300 hover:bg-slate-50">Apply</button>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button id="selectAll" class="h-10 px-3 rounded-xl border border-slate-300 hover:bg-slate-50">Select all</button>
+        <button id="clearSelection" class="h-10 px-3 rounded-xl border border-slate-300 hover:bg-slate-50">Clear</button>
+        <button id="previewSelected" class="h-10 px-4 rounded-xl bg-white border border-slate-300 hover:bg-slate-50">Preview selected</button>
+        <button id="printSelected" class="h-10 px-4 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800">Print selected</button>
+        <button id="printAll" class="h-10 px-4 rounded-xl bg-slate-700 text-white font-medium hover:bg-slate-600">Print all</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Table -->
+  <section class="rounded-xl border border-slate-200 mt-4">
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-slate-100 text-slate-700">
+          <tr>
+            <th class="p-3 text-left w-10">Sel</th>
+            <th class="p-3 text-left">Code</th>
+            <th class="p-3 text-left">Name</th>
+            <th class="p-3 text-left">Type</th>
+            <th class="p-3 text-left">Category</th>
+            <th class="p-3 text-left">Unit #</th>
+            <th class="p-3 text-left">Barcode</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="p-3 text-xs text-slate-500 border-t">Showing <span id="count">0</span> labels</div>
+  </section>
+
+  <!-- Preview Grid -->
+  <section class="no-print rounded-xl border border-slate-200 p-4 mt-4">
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="text-base font-semibold">Preview</h3>
+      <div class="text-xs text-slate-500" id="previewMeta">0 labels</div>
+    </div>
+    <div id="previewGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3"></div>
+  </section>
+</div>
+
+<!-- Hidden print area -->
+<div id="printArea" class="p-0">
+  <div id="printGrid" class="grid grid-cols-3 gap-6"></div>
+</div>
+
+<template id="labelTemplate">
+  <div class="label-card border border-slate-300 rounded-xl p-2 flex flex-col justify-between">
+    <div>
+      <div class="text-[10px] leading-tight text-slate-600">SKU</div>
+      <div class="text-[11px] font-semibold truncate" data-field="name"></div>
+      <div class="flex gap-2 text-[10px] text-slate-600 mt-0.5">
+        <span data-field="type" class="px-1.5 py-0.5 rounded bg-slate-100"></span>
+        <span data-field="category" class="px-1.5 py-0.5 rounded bg-slate-100"></span>
+        <span data-field="unit" class="px-1.5 py-0.5 rounded bg-slate-100"></span>
+      </div>
+    </div>
+    <div>
+      <svg class="barcode" data-field="barcode"></svg>
+      <div class="text-[9px] text-center mt-1 font-mono" data-field="code"></div>
+    </div>
+  </div>
+</template>
+
+<script>
+  // --- State ---
+  let labels = [];      // latest list from server (already filtered)
+  let filtered = [];    // client-side filtered (same as labels after load)
+
+  // --- Helpers ---
+  const byId = (id) => document.getElementById(id);
+  const pad = (n, w=3) => String(n).padStart(w, '0');
+
+  function renderTable(list) {
+    const tbody = byId('rows');
+    tbody.innerHTML = '';
+    list.forEach(item => {
+      const tr = document.createElement('tr');
+      tr.className = 'border-b last:border-0 hover:bg-slate-50';
+      tr.innerHTML = `
+        <td class="p-2 align-top"><input type="checkbox" class="selectItem h-4 w-4" data-id="${item.id}" /></td>
+        <td class="p-2 align-top font-mono text-xs">${item.code}</td>
+        <td class="p-2 align-top">${item.name}</td>
+        <td class="p-2 align-top">${item.type}</td>
+        <td class="p-2 align-top">${item.category}</td>
+        <td class="p-2 align-top">${pad(item.unitIndex)}</td>
+        <td class="p-2 align-top"><svg id="mini-${item.id}" class="h-12"></svg></td>
+      `;
+      tbody.appendChild(tr);
+      try { JsBarcode(`#mini-${item.id}`, item.code, {format:'CODE128', displayValue:false, height:40, margin:0}); } catch (e) {}
+    });
+    byId('count').textContent = list.length;
+  }
+
+  function buildCards(items, container) {
+    container.innerHTML = '';
+    const tpl = byId('labelTemplate');
+    items.forEach(it => {
+      const node = tpl.content.cloneNode(true);
+      node.querySelector('[data-field="name"]').textContent = it.name;
+      node.querySelector('[data-field="type"]').textContent = it.type;
+      node.querySelector('[data-field="category"]').textContent = it.category;
+      node.querySelector('[data-field="unit"]').textContent = `#${pad(it.unitIndex)}`;
+      node.querySelector('[data-field="code"]').textContent = it.code;
+      container.appendChild(node);
+      const lastSvg = container.querySelector('svg.barcode:last-of-type');
+      try { JsBarcode(lastSvg, it.code, {format:'CODE128', displayValue:false, height:60, margin:0}); } catch (e) {}
+    });
+  }
+
+  function preview(items) {
+    const grid = byId('previewGrid');
+    buildCards(items, grid);
+    byId('previewMeta').textContent = `${items.length} label${items.length!==1?'s':''}`;
+  }
+
+  function printItems(items) {
+    const grid = byId('printGrid');
+    buildCards(items, grid);
+    window.print();
+  }
+
+  function selectedIds() {
+    return Array.from(document.querySelectorAll('.selectItem:checked')).map(cb => cb.dataset.id);
+  }
+
+  async function fetchList() {
+    const name = byId('filterName').value || '';
+    const type = byId('filterType').value || '';
+    const category = byId('filterCategory').value || '';
+    const qs = new URLSearchParams({name, type, category});
+    const res = await fetch(`/api/list/?${qs.toString()}`, {credentials: 'same-origin'});
+    const data = await res.json();
+    return data.labels || [];
+  }
+
+  function applyClientFilters() {
+    const n = (byId('filterName').value || '').trim().toLowerCase();
+    const t = (byId('filterType').value || '').trim().toLowerCase();
+    const c = (byId('filterCategory').value || '').trim().toLowerCase();
+    return labels.filter(x =>
+      (!n || x.name.toLowerCase().includes(n) || x.code.toLowerCase().includes(n)) &&
+      (!t || x.type.toLowerCase().includes(t)) &&
+      (!c || x.category.toLowerCase().includes(c))
+    );
+  }
+
+  async function loadTable() {
+    labels = await fetchList();
+    filtered = applyClientFilters();
+    renderTable(filtered);
+  }
+
+  function getCsrf() {
+    const el = document.querySelector('input[name=csrfmiddlewaretoken]');
+    return el ? el.value : '';
+  }
+
+  // --- Events ---
+ byId('createForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const res = await fetch('/api/create/', {
+    method: 'POST',
+    body: fd,
+    headers: { 'X-CSRFToken': getCsrf() },
+    credentials: 'same-origin'
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    alert('Create failed: ' + txt);
+    return;
+  }
+  const data = await res.json();
+  // Update credits badge if provided
+  if (typeof data.credits_left !== 'undefined') {
+    const badge = document.getElementById('creditsCount');
+    if (badge) badge.textContent = Number(data.credits_left).toFixed(2);
+  }
+  // reload list
+  await loadTable();
+  preview([]); // clear preview after creation
+});
+
+
+  byId('applyFilters').addEventListener('click', async (e) => {
+    e.preventDefault();
+    filtered = applyClientFilters();
+    renderTable(filtered);
+  });
+
+  byId('selectAll').addEventListener('click', (e) => {
+    e.preventDefault();
+    document.querySelectorAll('.selectItem').forEach(cb => cb.checked = true);
+  });
+
+  byId('clearSelection').addEventListener('click', (e) => {
+    e.preventDefault();
+    document.querySelectorAll('.selectItem').forEach(cb => cb.checked = false);
+    preview([]);
+  });
+
+  byId('previewSelected').addEventListener('click', (e) => {
+    e.preventDefault();
+    const ids = selectedIds().map(x=>Number(x));
+    const items = filtered.filter(x => ids.includes(x.id));
+    preview(items);
+  });
+
+  byId('printSelected').addEventListener('click', (e) => {
+    e.preventDefault();
+    const ids = selectedIds().map(x=>Number(x));
+    const items = filtered.filter(x => ids.includes(x.id));
+    if (!items.length) return alert('No labels selected.');
+    printItems(items);
+  });
+
+  byId('printAll').addEventListener('click', (e) => {
+    e.preventDefault();
+    if (!filtered.length) return alert('Nothing to print.');
+    printItems(filtered);
+  });
+
+  // Initial load
+  loadTable();
+  preview([]);
+</script>
+{% endblock %}

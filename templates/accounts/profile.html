@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Profile — Barcode Labeler{% endblock %}
+{% block content %}
+<div class="bg-white p-6 border rounded-xl">
+  <h1 class="text-lg font-semibold mb-4">Profile</h1>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div>
+      <div class="text-xs text-slate-500">Email</div>
+      <div class="font-mono">{{ email }}</div>
+    </div>
+    <div>
+      <div class="text-xs text-slate-500">User ID (UUID)</div>
+      <div class="font-mono">{{ public_id }}</div>
+    </div>
+    <div>
+      <div class="text-xs text-slate-500">Index (DB id)</div>
+      <div class="font-mono">{{ index_id }}</div>
+    </div>
+    <div>
+        <div class="text-xs text-slate-500">Total Labels Created</div>
+        <div class="font-mono">{{ label_count }}</div>
+    </div>
+    <div>
+        <div class="text-xs text-slate-500">Credits</div>
+        <div class="font-mono">{{ credits }}</div>
+    </div>
+
+  </div>
+</div>
+
+
+
+{% endblock %}

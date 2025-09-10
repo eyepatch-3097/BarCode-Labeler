@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Buy Credits — Barcode Labeler{% endblock %}
+{% block content %}
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+<div class="max-w-lg mx-auto bg-white p-6 border rounded-xl">
+  <h1 class="text-lg font-semibold mb-1">Buy Credits</h1>
+  <p class="text-sm text-slate-600 mb-4">
+    1 credit = {{ labels_per_credit }} labels = ₹{{ price_per_credit }}
+  </p>
+
+  <!-- Hidden form only to get CSRF token easily -->
+  <form id="csrfForm" class="hidden" method="post">{% csrf_token %}</form>
+
+  <div class="space-y-3">
+    <label class="block text-sm">How many credits do you want?</label>
+    <input id="buyCreditsInput" type="number" min="1" value="1"
+           class="w-full border rounded px-3 py-2">
+
+    <div class="text-sm text-slate-700">
+      Amount to pay: <span class="font-semibold">₹<span id="calcAmount">{{ price_per_credit }}</span></span>
+    </div>
+
+    <button id="purchaseBtn" class="w-full h-10 rounded bg-slate-900 text-white">Purchase credits</button>
+
+    <div class="mt-4 text-sm">
+      Current balance: <span class="font-mono" id="currentCredits">{{ current_credits }}</span>
+    </div>
+  </div>
+</div>
+
+<script>
+  const pricePerCredit = {{ price_per_credit }};
+  const siteName = "{{ request.site_name|default:request.META.HTTP_HOST|default:'DotSwitch' }}";
+
+  const input = document.getElementById('buyCreditsInput');
+  const amount = document.getElementById('calcAmount');
+  const creditsBadge = document.getElementById('creditsCount');
+  const currentCredits = document.getElementById('currentCredits');
+
+  function getCsrf() {
+    const el = document.querySelector('input[name=csrfmiddlewaretoken]');
+    return el ? el.value : '';
+  }
+
+  input.addEventListener('input', () => {
+    const v = Math.max(1, parseInt(input.value || '1', 10));
+    amount.textContent = (v * pricePerCredit).toFixed(2);
+  });
+
+  document.getElementById('purchaseBtn').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const credits = Math.max(1, parseInt(input.value || '1', 10));
+
+    // 1) Ask our backend to create a Razorpay order
+    const fd = new FormData();
+    fd.append('credits', String(credits));
+    const orderRes = await fetch('/accounts/api/create-order/', {
+      method: 'POST',
+      body: fd,
+      headers: {'X-CSRFToken': getCsrf()},
+      credentials: 'same-origin'
+    });
+    if (!orderRes.ok) {
+      const txt = await orderRes.text();
+      alert('Failed to create order: ' + txt);
+      return;
+    }
+    const order = await orderRes.json();
+
+    // 2) Open Razorpay Checkout
+    const opts = {
+      key: order.key_id,
+      amount: order.amount,           // paise
+      currency: order.currency,
+      name: order.name || 'DotSwitch',
+      description: credits + ' credits',
+      order_id: order.order_id,
+      prefill: order.prefill || {},
+      theme: { color: "#0f172a" },
+      handler: async function (response) {
+        // 3) On success, verify with server and top-up credits
+        const verifyFd = new FormData();
+        verifyFd.append('razorpay_order_id', response.razorpay_order_id);
+        verifyFd.append('razorpay_payment_id', response.razorpay_payment_id);
+        verifyFd.append('razorpay_signature', response.razorpay_signature);
+
+        const vRes = await fetch('/accounts/api/payment-success/', {
+          method: 'POST',
+          body: verifyFd,
+          headers: {'X-CSRFToken': getCsrf()},
+          credentials: 'same-origin'
+        });
+        const vData = await vRes.json();
+        if (vRes.ok && vData.ok) {
+          alert('Payment successful! Credits added.');
+          if (creditsBadge) creditsBadge.textContent = Number(vData.credits_left).toFixed(2);
+          if (currentCredits) currentCredits.textContent = Number(vData.credits_left).toFixed(2);
+        } else {
+          alert('Payment verification failed: ' + (vData.error || 'Unknown error'));
+        }
+      }
+    };
+    const rz = new Razorpay(opts);
+    rz.on('payment.failed', function (resp) {
+      alert('Payment failed: ' + (resp.error && resp.error.description ? resp.error.description : ''));
+    });
+    rz.open();
+  });
+</script>
+{% endblock %}
